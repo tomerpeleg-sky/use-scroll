@@ -13,73 +13,126 @@ const defaultState = {
 
 let state = { ...defaultState };
 
-export default function useScroll() {
-  const scrollTo = (id, options = state.options.scrollOptions) => {
-    const scrollTarget = state.targets[id]?.current;
+const scrollIntoView = (scrollTarget, options = {}) => {
+  const top =
+    scrollTarget.getBoundingClientRect().top +
+    window.pageYOffset +
+    options.offset;
+
+  window.scrollTo({ top, ...options });
+
+  return scrollTarget;
+};
+
+const scrollTo = (id, options = {}) =>
+  new Promise((resolve, reject) => {
+    const scrollTarget = state.targets[id];
 
     if (!scrollTarget) {
+      reject("MISSING_TARGET");
       return;
     }
 
-    state.active = id;
-    const top =
-      scrollTarget.getBoundingClientRect().top +
-      window.pageYOffset +
-      options.offset;
-
-    window.scrollTo({ top, behavior: "smooth" });
-  };
-
-  const setSequence = (...sequence) => {
-    state.sequence = sequence;
-  };
-
-  const setOptions = ({ offset, filterByMounted }) => {
-    state.options = {
+    const targetOptions = {
       ...state.options,
-      filterByMounted,
-      scrollOptions: { ...state.scrollOptions, offset },
+      ...scrollTarget.options,
+      ...options,
+      scrollOptions: {
+        ...state.options?.scrollOptions,
+        ...scrollTarget.options?.scrollOptions,
+        ...options?.scrollOptions,
+      },
     };
+
+    setTimeout(() => {
+      if (!Boolean(scrollTarget?.ref?.current)) {
+        reject("TARGET_NOT_MOUNTED");
+        return;
+      }
+
+      state.active = id;
+
+      console.log("[useScroll][scrollTo] about to scroll", {
+        scrollTarget,
+        targetOptions,
+        options: state.options,
+      });
+      scrollIntoView(scrollTarget.ref.current, targetOptions.scrollOptions);
+
+      if (scrollTarget.focusRef?.current) {
+        console.log("[useScroll][scrollTo] focusing", {
+          focusTarget: scrollTarget.focusRef?.current,
+        });
+        scrollTarget.focusRef.current.focus();
+      }
+
+      resolve();
+    }, targetOptions.delay || 0);
+  });
+
+const setSequence = (...sequence) => {
+  state.sequence = sequence;
+  return sequence;
+};
+
+const setOptions = ({ offset, filterByMounted }) => {
+  state.options = {
+    ...state.options,
+    filterByMounted,
+    scrollOptions: { ...state.options.scrollOptions, offset },
   };
+  return state.options;
+};
 
-  const createScrollTarget = (id) => {
-    const ref = useRef(null);
-    state.targets[id] = ref;
+const useScrollTarget = (id, options = {}) => {
+  const ref = useRef(null);
+  state.targets[id] = { ...state.targets[id], ref, options };
 
-    return { ref };
-  };
+  return { ref };
+};
 
-  const start = () => {
-    scrollTo(state.sequence[0]);
-  };
+const useFocusTarget = (id) => {
+  const ref = useRef(null);
+  state.targets[id] = { ...state.targets[id], focusRef: ref };
 
-  const next = () => {
-    if (!state.sequence?.length) {
-      return;
-    }
+  return { ref };
+};
 
-    const sequence = state.options.filterByMounted
-      ? state.sequence.filter((targetId) =>
-          Boolean(state.targets[targetId]?.current)
-        )
-      : state.sequence;
+const start = () => {
+  return scrollTo(state.sequence[0]);
+};
 
-    const activeIndex = sequence.indexOf(state.active);
+const next = () => {
+  if (!state.sequence?.length) {
+    return Promise.reject("MISSING_SEQUENCE");
+  }
 
-    if (activeIndex === -1) {
-      scrollTo(state.sequence[0]);
-    } else if (activeIndex + 1 < sequence.length) {
-      scrollTo(sequence[activeIndex + 1]);
-    }
-  };
+  const sequence = state.options.filterByMounted
+    ? state.sequence.filter((targetId) =>
+        Boolean(state.targets[targetId]?.ref?.current)
+      )
+    : state.sequence;
 
-  const reset = () => {
-    state = { ...defaultState };
-  };
+  const activeIndex = sequence.indexOf(state.active);
 
+  if (activeIndex === -1) {
+    return scrollTo(sequence[0]);
+  } else if (activeIndex + 1 < sequence.length) {
+    return scrollTo(sequence[activeIndex + 1]);
+  }
+
+  return Promise.reject("REACHED_END");
+};
+
+const reset = () => {
+  state = { ...defaultState };
+};
+
+export default function useScroll() {
   return {
     setOptions,
-    createScrollTarget,
+    createScrollTarget: useScrollTarget,
+    createFocusTarget: useFocusTarget,
     setSequence,
     start,
     next,
