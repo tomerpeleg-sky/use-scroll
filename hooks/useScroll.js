@@ -52,21 +52,15 @@ const scrollTo = (id, options = {}) =>
 
       state.active = id;
 
-      console.log("[useScroll][scrollTo] about to scroll", {
-        scrollTarget,
-        targetOptions,
-        options: state.options,
-      });
       scrollIntoView(scrollTarget.ref.current, targetOptions.scrollOptions);
 
       if (scrollTarget.focusRef?.current) {
-        console.log("[useScroll][scrollTo] focusing", {
-          focusTarget: scrollTarget.focusRef?.current,
-        });
         scrollTarget.focusRef.current.focus();
+      } else if (scrollOptions.focus) {
+        scrollTarget.ref.current.focus();
       }
 
-      resolve();
+      resolve("SCROLLING");
     }, targetOptions.delay || 0);
   });
 
